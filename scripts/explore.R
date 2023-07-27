@@ -9,8 +9,22 @@ set.seed(seed)
 
 ####  Install and load the required packages
 if(!require(pacman)) install.packages("pacman")
-pacman::p_load(data.table, devtools, backports, Hmisc, tidyr,dplyr,ggplot2,plyr,scales,readr,
-               httr, DT, tidyverse,reshape2,lubridate,praznik,epitools,tcltk,ggpmisc,ggpubr)
+pacman::p_load(stars, # spatiotemporal data handling
+               raster, # raster data handling
+               terra, # raster data handling
+               sf, # vector data handling
+               dplyr, # data wrangling
+               stringr, # string manipulation
+               lubridate, # dates handling
+               data.table, # data wrangling
+               patchwork, # arranging figures
+               tigris, # county border
+               colorspace, # color scale
+               viridis, # arranging figures
+               tidyr, # reshape
+               ggspatial, # north arrow and scale bar
+               ggplot2, # make maps
+               broom)
 
 dat <- read_csv("data/us_extreme_events_by_county_year_by_type_2008_2022.csv")
 
@@ -59,3 +73,27 @@ pl <- ggplot(dat_state,aes(x=year_numerical,y=average_impacted_area_hectare,
 ggsave(pl,file=paste0("outputs/plots/",dat_state$STATE_NAME[1],".png"), width = 10, height = 20)
 
 }
+
+
+###simple regression analysis by county
+
+out_hectar <- dat %>%
+  group_by(GEOID,event_type) %>%
+  group_modify(
+    # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
+    ~ tidy(glm(average_impacted_area_hectare ~ year_numerical, data = .))
+  ) %>%
+  filter(term=="year_numerical" & p.value < 0.05)
+
+
+out_frequency <- dat %>%
+  group_by(GEOID,event_type) %>%
+  group_modify(
+    # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
+    ~ tidy(glm(total_event_days ~ year_numerical, data = .))
+  ) %>%
+  filter(term=="year_numerical" & p.value < 0.05)
+
+
+### map it
+
