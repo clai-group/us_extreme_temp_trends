@@ -97,3 +97,6 @@ out_frequency <- dat %>%
 
 ### map it
 
+library(sf)
+# read the spatial layer of census unit in sf class
+tracts_boundaries_sf <- readRDS("data/contiguous_us_counties_sf_2022.rds")
