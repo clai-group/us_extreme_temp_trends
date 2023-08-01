@@ -115,10 +115,38 @@ out_frequency_state <- dat %>%
   filter(term=="year_numerical")
 
 
-
+out_hectar_county$GEOID <- as.character(out_hectar_county$GEOID)
 
 ### map it
 
 library(sf)
 # read the spatial layer of census unit in sf class
 tracts_boundaries_sf <- readRDS("data/contiguous_us_counties_sf_2022.rds")
+event <- "Extreme Heat Event"
+
+
+tracts_boundaries_sf <- merge(tracts_boundaries_sf,
+                              subset(out_hectar_county,out_hectar_county$event_type == event), by="GEOID", all=T)
+
+ggplot(data = tracts_boundaries_sf) +
+  geom_sf(aes(fill=estimate),color=NA) +
+  theme_void() +
+  scale_fill_viridis(name="Hectars", guide = guide_legend( keyheight = unit(3, units = "mm"), keywidth=unit(12, units = "mm"), label.position = "bottom", title.position = 'top', nrow=1) ) +
+  labs(
+    title = paste0(event),
+    subtitle = "Estimated increase by Hectar impacted since 2008",
+    caption = "--"
+  ) +
+  theme(
+    text = element_text(color = "#22211d"),
+    plot.background = element_rect(fill = "#f5f5f2", color = NA),
+    panel.background = element_rect(fill = "#f5f5f2", color = NA),
+    legend.background = element_rect(fill = "#f5f5f2", color = NA),
+
+    plot.title = element_text(size= 22, hjust=0.01, color = "#4e4d47", margin = margin(b = -0.1, t = 0.4, l = 2, unit = "cm")),
+    plot.subtitle = element_text(size= 17, hjust=0.01, color = "#4e4d47", margin = margin(b = -0.1, t = 0.43, l = 2, unit = "cm")),
+    plot.caption = element_text( size=12, color = "#4e4d47", margin = margin(b = 0.3, r=-99, unit = "cm") ),
+
+    legend.position = c(0.7, 0.09)
+  ) +
+  coord_sf()
