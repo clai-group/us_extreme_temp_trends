@@ -80,6 +80,23 @@ ggplot(dat_mas,aes(x=year_numerical,group=event_type,colour = factor(event_type)
 # dat$average_impacted_area_hectare <- scale(dat$average_impacted_area_hectare)
 
 
+
+out_hectar_US <- dat %>%
+  group_by(event_type) %>%
+  group_modify(
+    # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
+    ~ tidy(glm(average_impacted_area_hectare ~ year_numerical, data = .))
+  ) %>%
+  filter(term=="year_numerical")
+
+out_frequency_US <- dat %>%
+  group_by(event_type) %>%
+  group_modify(
+    # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
+    ~ tidy(glm(total_event_days ~ year_numerical, data = .))
+  ) %>%
+  filter(term=="year_numerical")
+
 out_hectar_county <- dat %>%
   group_by(GEOID,event_type) %>%
   group_modify(
@@ -150,3 +167,34 @@ ggplot(data = tracts_boundaries_sf) +
     legend.position = c(0.7, 0.09)
   ) +
   coord_sf()
+
+
+
+# By state numbers
+by_state_count <- dat %>%
+  dplyr::group_by(STATE_NAME,event_type,year_numerical) %>%
+  dplyr::summarise(count=max(total_event_days))
+
+US_count <- by_state_count %>%
+  dplyr::group_by(event_type,year_numerical) %>%
+  dplyr::summarise(count=max(count))
+
+out_frequency_US <- US_count %>%
+  group_by(event_type) %>%
+  group_modify(
+    # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
+    ~ tidy(glm(count ~ year_numerical, data = .))
+  ) %>%
+  filter(term=="year_numerical")
+
+
+
+# which counties have the highest frequency of each events?
+by_county_count_average <- dat %>%
+  dplyr::group_by(STATE_NAME,event_type,GEOID) %>%
+  dplyr::summarise(mean_days=mean(total_event_days))
+
+# which counties have the largest area impacted by each events?
+by_county_acres_average <- dat %>%
+  dplyr::group_by(STATE_NAME,event_type,GEOID) %>%
+  dplyr::summarise(mean_acres=mean(average_impacted_area_hectare))
