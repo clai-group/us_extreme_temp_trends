@@ -10,8 +10,8 @@ set.seed(seed)
 ####  Install and load the required packages
 if(!require(pacman)) install.packages("pacman")
 pacman::p_load(stars, # spatiotemporal data handling
-               raster, # raster data handling
-               terra, # raster data handling
+               #raster, # raster data handling
+               #terra, # raster data handling
                sf, # vector data handling
                dplyr, # data wrangling
                stringr, # string manipulation
@@ -26,11 +26,20 @@ pacman::p_load(stars, # spatiotemporal data handling
                ggplot2, # make maps
                broom)
 
-dat <- data.table::fread("data/us_extreme_events_by_county_year_by_type_2008_2022.csv")
+#dat <- data.table::fread("data/us_extreme_events_by_county_year_by_type_2008_2022.csv")
+dat_path <- file.path(here::here("trend_analysis_data/data",
+                               "Counties_events_by_type_by_year_sf_2008_2022.rds"))
+ 
+file_size <- file.info(dat_path)$size
 
+dat <- readRDS(dat_path)[[1]]
 
+# create a non-spatial table of annual statistics from the counties spatial data
+dat_table <- dat %>% st_drop_geometry()
+
+ls(dat)
 ## focus on a sample state
-dat_mas <- subset(dat,dat$STATE_NAME == "Massachusetts")
+dat_mas <- subset(dat, dat$STATE_NAME == "Massachusetts")
 
 ##how many counties?
 length(unique(dat_mas$GEOID))
@@ -81,7 +90,7 @@ ggplot(dat_mas,aes(x=year_numerical,group=event_type,colour = factor(event_type)
 
 
 
-out_hectar_US <- dat %>%
+out_hectar_US <- dat %>%  st_drop_geometry() %>% 
   group_by(event_type) %>%
   group_modify(
     # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
@@ -89,7 +98,7 @@ out_hectar_US <- dat %>%
   ) %>%
   filter(term=="year_numerical")
 
-out_frequency_US <- dat %>%
+out_frequency_US <- dat_table %>% 
   group_by(event_type) %>%
   group_modify(
     # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
@@ -97,7 +106,7 @@ out_frequency_US <- dat %>%
   ) %>%
   filter(term=="year_numerical")
 
-out_hectar_county <- dat %>%
+out_hectar_county <- dat_table %>% 
   group_by(GEOID,event_type) %>%
   group_modify(
     # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
@@ -106,7 +115,7 @@ out_hectar_county <- dat %>%
   filter(term=="year_numerical")
 
 
-out_hectar_state <- dat %>%
+out_hectar_state <- dat_table %>% 
   group_by(STATE_NAME,event_type) %>%
   group_modify(
     # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
@@ -115,7 +124,7 @@ out_hectar_state <- dat %>%
   filter(term=="year_numerical")
 
 
-out_frequency_county <- dat %>%
+out_frequency_county <- dat_table %>% 
   group_by(GEOID,event_type) %>%
   group_modify(
     # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
@@ -123,7 +132,7 @@ out_frequency_county <- dat %>%
   ) %>%
   filter(term=="year_numerical")
 
-out_frequency_state <- dat %>%
+out_frequency_state <- dat_table %>% 
   group_by(STATE_NAME,event_type) %>%
   group_modify(
     # Use `tidy`, `glance` or `augment` to extract different information from the fitted models.
@@ -138,14 +147,15 @@ out_hectar_county$GEOID <- as.character(out_hectar_county$GEOID)
 
 library(sf)
 # read the spatial layer of census unit in sf class
-tracts_boundaries_sf <- readRDS("data/contiguous_us_counties_sf_2022.rds")
+#counties_boundaries_sf <- readRDS("data/contiguous_us_counties_sf_2022.rds")
 event <- "Extreme Heat Event"
 
 
-tracts_boundaries_sf <- merge(tracts_boundaries_sf,
-                              subset(out_hectar_county,out_hectar_county$event_type == event), by="GEOID", all=T)
+#counties_boundaries_sf <- merge(counties_boundaries_sf,
+#                              subset(out_hectar_county,out_hectar_county$event_type == event), by="GEOID", all=T)
+counties_boundaries_sf <-  dat
 
-ggplot(data = tracts_boundaries_sf) +
+ggplot(data = counties_boundaries_sf) +
   geom_sf(aes(fill=estimate),color=NA) +
   theme_void() +
   scale_fill_viridis(name="Hectars", guide = guide_legend( keyheight = unit(3, units = "mm"), keywidth=unit(12, units = "mm"), label.position = "bottom", title.position = 'top', nrow=1) ) +
@@ -190,11 +200,14 @@ out_frequency_US <- US_count %>%
 
 
 # which counties have the highest frequency of each events?
-by_county_count_average <- dat %>%
-  dplyr::group_by(STATE_NAME,event_type,GEOID) %>%
-  dplyr::summarise(mean_days=mean(total_event_days))
+by_county_count_average <- dat_table %>% 
+  dplyr::group_by(STATE_NAME,NAME, event_type,GEOID) %>%
+  dplyr::summarise(mean_days=mean(total_event_days)) %>% 
+  arrange(desc(mean_days))
 
 # which counties have the largest area impacted by each events?
-by_county_acres_average <- dat %>%
-  dplyr::group_by(STATE_NAME,event_type,GEOID) %>%
-  dplyr::summarise(mean_acres=mean(average_impacted_area_hectare))
+by_county_acres_average <- dat_table %>% 
+  dplyr::group_by(STATE_NAME,NAME, event_type,GEOID) %>%
+  dplyr::summarise(mean_acres=mean(average_impacted_area_hectare)) %>% 
+  arrange(desc(mean_acres))
+
