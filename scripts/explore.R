@@ -36,6 +36,71 @@ dat <- readRDS("data/Counties_compiled_admin_geo_ehe_ece_sf_2008_2022.rds")[[1]]
 
 ### we need to create annual/monthly aggregates by frequency (each row is an event in a county), maximum ratio acrea impacted, and maximum/minimum intensity
 
+## create a non-spatial table of annual statistics from the counties spatial data
+dat_table <- dat %>% st_drop_geometry()
+
+ls(dat)
+
+dat_table$abs_intensity = abs(ifelse(dat_table$event_type == "Extreme Cold Event", dat_table$min_intensity, dat_table$max_intensity))
+
+#Annual
+avg_by_county = dat_table %>% group_by(STATE_NAME,NAME, event_type,GEOID, year_numerical) %>% 
+  summarise(count_event = n(),
+            total_imapacted_area_hectare = sum(impacted_area_hectare),
+            avg_impacted_area_hectare = mean(impacted_area_hectare),
+            mean_intensity = mean(abs_intensity), 
+            avg_impacted_area_ratio = mean(impacted_area)/total_area) 
+
+## which counties have the highest frequency of each events?
+freq_by_county = dat_table %>%
+  dplyr::group_by(STATE_NAME,NAME, event_type,GEOID) %>%
+  dplyr::summarise(total_event_days = n(), mean_days=sum(total_event_days)/15) 
+
+
+freq_cold = freq_by_county %>% filter(event_type == "Extreme Cold Event") %>% 
+  arrange(desc(mean_days)) %>% distinct() ## Cold
+
+freq_heat = freq_by_county %>% filter(event_type == "Extreme Heat Event") %>% ## Cold
+  arrange(desc(mean_days)) %>% distinct() ## Heat
+
+## maximum ratio acrea impacted
+ratio_cold = avg_by_county %>% filter(event_type == "Extreme Cold Event") %>% 
+  select(GEOID, STATE_NAME,NAME, year_numerical,avg_impacted_area_ratio, event_type) %>% 
+  arrange(desc(avg_impacted_area_ratio)) %>% 
+  distinct() ## Cold
+
+ratio_heat =avg_by_county %>% filter(event_type == "Extreme Heat Event") %>% 
+  select(GEOID, STATE_NAME,NAME, year_numerical,avg_impacted_area_ratio, event_type) %>% 
+  arrange(desc(avg_impacted_area_ratio)) %>% 
+  distinct() ## Heat
+
+## intensity
+intensity_cold = avg_by_county %>% filter(event_type == "Extreme Cold Event") %>% 
+  select(GEOID, STATE_NAME,NAME, year_numerical,mean_intensity, event_type) %>% 
+  arrange(desc(mean_intensity)) %>% 
+  distinct() ## Cold
+
+intensity_heat =avg_by_county %>% filter(event_type == "Extreme Heat Event") %>% 
+  select(GEOID, STATE_NAME,NAME, year_numerical,mean_intensity, event_type) %>% 
+  arrange(desc(mean_intensity)) %>% 
+  distinct() ## Heat
+
+
+## Plots of absolute intensity of counties for each state
+unique_states = unique(dat_table$STATE_NAME)
+for (state_name in unique_states) {
+  # Filter the dataset for each state
+  filtered_data <- dat_table %>%
+    filter(STATE_NAME == state_name) %>% 
+    group_by(STATE_NAME,NAME, event_type,GEOID, year_numerical) %>%
+    summarise(mean_intensity = mean(abs_intensity))
+  
+  # Plots by counties for each state
+  intensity_plot = ggplot(filtered_data,aes(x=year_numerical,group=event_type,colour = factor(event_type)), size = 4) +
+    geom_line(aes(y=mean_intensity)) + facet_grid(GEOID~event_type)
+}
+
+
 
 #
 #
