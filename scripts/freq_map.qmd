@@ -1,0 +1,212 @@
+---
+title: "Frequency"
+format: html
+editor: visual
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(viridis)
+library(tidyverse)
+library(sf)
+library(gridExtra)
+library(RColorBrewer)
+```
+
+## Loading the base spatail data set including Counties and States boundaires
+
+```{r}
+source_dir <- "./data/"
+
+states_file_path <- file.path(source_dir,
+                              "us49_states_geo_tigris.rds")
+states_geo <- readRDS(states_file_path)[[1]]
+
+counties_file_path <- file.path(source_dir,
+                                "us49_counties_geo_tigris.rds")
+counties_geo <- readRDS(counties_file_path)[[1]]
+
+plot(counties_geo[1])
+```
+
+## Loading the aggregate extreme events data set
+
+```{r}
+dat_path <- file.path(here::here("trend_analysis_data/data",
+                               "Counties_compiled_admin_geo_ehe_ece_sf_2008_2022.rds"))
+file_size <- file.info(dat_path)$size
+dat <- readRDS("data/EHE_ECE_data/Counties_compiled_admin_geo_ehe_ece_sf_2008_2022.rds")[[1]] 
+
+```
+
+```{r}
+# Frequency
+dat_table = dat %>%  st_drop_geometry()
+
+## Adding years with no event to the dataset 
+lookup_table <- dat_table %>%
+  select(GEOID, NAME, STUSPS, STATE_NAME, COUNTY_NAME) %>%
+  distinct() %>%
+  filter(!is.na(NAME) & !is.na(STUSPS) & !is.na(STATE_NAME) & 
+           !is.na(COUNTY_NAME))
+
+fill_na_with_lookup <- function(dat_table, lookup_table, column) {
+  na_rows <- is.na(dat_table[[column]])
+  lookup_values <- lookup_table[match(dat_table$GEOID[na_rows], lookup_table$GEOID), column]
+  dat_table[[column]][na_rows] <- lookup_values
+  return(dat_table)
+}
+year_range <- data.frame(year_numerical = 2008:2022)
+unique_geoids <- unique(dat$GEOID)
+year_geoid_combinations <- expand.grid(year_numerical = year_range$year_numerical, GEOID = unique_geoids)
+
+## Overall
+event_count_all <- dat_table %>%
+  group_by(GEOID, NAME, STATE_NAME, year_numerical) %>%
+  summarize(event_count = n())
+
+event_count_all <- merge(year_geoid_combinations, event_count_all, by = c("year_numerical", "GEOID"), all = TRUE)
+event_count_all["event_count"] <- lapply(event_count_all["event_count"], function(x) ifelse(is.na(x), 0, x))
+
+event_count_all <- fill_na_with_lookup(event_count_all, lookup_table, "NAME")
+event_count_all <- fill_na_with_lookup(event_count_all, lookup_table, "STATE_NAME")
+
+# Poisson Regression
+poisson_all <- event_count_all %>%
+  group_by(GEOID, NAME, STATE_NAME) %>%
+  do(model = glm(event_count ~ year_numerical, family = poisson(), data = .))
+
+slopes_all <- poisson_all %>%
+  rowwise() %>%
+  mutate(slope = coef(model)[["year_numerical"]])
+slopes_all <- slopes_all %>%
+  ungroup() %>%
+  select(GEOID, NAME, STATE_NAME, slope)
+
+```
+
+```{r}
+# Map
+# Merge with geometry data
+county_boundaris_catalog_all <- merge(counties_geo,
+          slopes_all %>% st_drop_geometry(),
+          by.x="GEOID",
+          by.y="GEOID",
+          all.x = TRUE,
+          all.y = TRUE,
+          suffix = c("","_sp")) %>% st_as_sf() 
+
+# Frequency all map
+ggplot() +
+  geom_sf(data = county_boundaris_catalog_all,
+            aes(fill = slope),
+            lwd = .1) + 
+  scale_fill_distiller(palette = "RdBu", limit = c(-0.4, 0.4),
+                       breaks = c( -0.2, 0, 0.2)) +
+  geom_sf(data = states_geo, fill = NA, color = "black", size = 0.5) +
+  labs(fill = "Frequency") +
+  theme_void() + 
+  theme(legend.position = "bottom")
+```
+
+```{r}
+## Heat
+event_count_ehe <- dat_table %>%
+  filter(event_type == "Extreme Heat Event") %>%
+  group_by(GEOID, NAME, STATE_NAME, year_numerical) %>%
+  summarize(event_count = n())
+
+event_count_ehe <- merge(year_geoid_combinations, event_count_ehe, by = c("year_numerical", "GEOID"), all = TRUE)
+event_count_ehe["event_count"] <- lapply(event_count_ehe["event_count"], function(x) ifelse(is.na(x), 0, x))
+
+event_count_ehe <- fill_na_with_lookup(event_count_ehe, lookup_table, "NAME")
+event_count_ehe <- fill_na_with_lookup(event_count_ehe, lookup_table, "STATE_NAME")
+
+# Poisson Regression
+poisson_ehe <- event_count_ehe %>%
+  group_by(GEOID, NAME, STATE_NAME) %>%
+  do(model = glm(event_count ~ year_numerical, family = poisson(), data = .))
+
+slopes_ehe_poi <- poisson_ehe %>%
+  rowwise() %>%
+  mutate(slope = coef(model)[["year_numerical"]])
+slopes_ehe_poi <- slopes_ehe_poi %>%
+  ungroup() %>%
+  select(GEOID, NAME, STATE_NAME, slope)
+
+```
+
+```{r}
+# Map
+# Merge with geometry data
+county_boundaris_ehe_catalog <- merge(counties_geo,
+          slopes_ehe_poi %>% st_drop_geometry(),
+          by.x="GEOID",
+          by.y="GEOID",
+          all.x = TRUE,
+          all.y = TRUE,
+          suffix = c("","_sp")) %>% st_as_sf() 
+
+# Frequency EHE map
+ggplot() +
+  geom_sf(data = county_boundaris_ehe_catalog,
+            aes(fill = slope),
+            lwd = .1) + 
+  scale_fill_distiller(palette = "RdBu", limit = c(-0.4, 0.4),
+                       breaks = c( -0.2, 0, 0.2)) +
+  geom_sf(data = states_geo, fill = NA, color = "black", size = 0.5) +
+  labs(fill = "Frequency EHE") +
+  theme_void() + 
+  theme(legend.position = "bottom")
+```
+
+```{r}
+## Cold
+event_count_ece <- dat_table %>%
+  filter(event_type == "Extreme Cold Event") %>%
+  group_by(GEOID, NAME, STATE_NAME, year_numerical) %>%
+  summarize(event_count = n())
+
+event_count_ece <- merge(year_geoid_combinations, event_count_ece, by = c("year_numerical", "GEOID"), all = TRUE)
+event_count_ece["event_count"] <- lapply(event_count_ece["event_count"], function(x) ifelse(is.na(x), 0, x))
+
+event_count_ece <- fill_na_with_lookup(event_count_ece, lookup_table, "NAME")
+event_count_ece <- fill_na_with_lookup(event_count_ece, lookup_table, "STATE_NAME")
+
+# Poisson Regression
+poisson_ece <- event_count_ece %>%
+  group_by(GEOID, NAME, STATE_NAME) %>%
+  do(model = glm(event_count ~ year_numerical, family = poisson(), data = .))
+
+slopes_ece_poi <- poisson_ece %>%
+  rowwise() %>%
+  mutate(slope = coef(model)[["year_numerical"]])
+slopes_ece_poi <- slopes_ece_poi %>%
+  ungroup() %>%
+  select(GEOID, NAME, STATE_NAME, slope)
+
+```
+
+```{r}
+# Map
+# Merge with geometry data
+county_boundaris_ece_catalog <- merge(counties_geo,
+          slopes_ece_poi %>% st_drop_geometry(),
+          by.x="GEOID",
+          by.y="GEOID",
+          all.x = TRUE,
+          all.y = TRUE,
+          suffix = c("","_sp")) %>% st_as_sf() 
+
+# Frequency ECE map
+ggplot() +
+  geom_sf(data = county_boundaris_ece_catalog,
+            aes(fill = slope),
+            lwd = .1) + 
+  scale_fill_distiller(palette = "RdBu", limit = c(-0.4, 0.4),
+                       breaks = c( -0.2, 0, 0.2)) +
+  geom_sf(data = states_geo, fill = NA, color = "black", size = 0.5) +
+  labs(fill = "Frequency ECE") +
+  theme_void() + 
+  theme(legend.position = "bottom")
+```
