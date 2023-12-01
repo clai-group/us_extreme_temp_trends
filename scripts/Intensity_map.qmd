@@ -1,0 +1,200 @@
+---
+title: "Frequency"
+format: html
+editor: visual
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(viridis)
+library(tidyverse)
+library(sf)
+library(gridExtra)
+library(RColorBrewer)
+```
+
+## Loading the base spatail data set including Counties and States boundaires
+
+```{r}
+source_dir <- "./data/"
+
+states_file_path <- file.path(source_dir,
+                              "us49_states_geo_tigris.rds")
+states_geo <- readRDS(states_file_path)[[1]]
+
+counties_file_path <- file.path(source_dir,
+                                "us49_counties_geo_tigris.rds")
+counties_geo <- readRDS(counties_file_path)[[1]]
+
+plot(counties_geo[1])
+```
+
+## Loading the aggregate extreme events data set
+
+```{r}
+dat_path <- file.path(here::here("trend_analysis_data/data",
+                               "Counties_compiled_admin_geo_ehe_ece_sf_2008_2022.rds"))
+file_size <- file.info(dat_path)$size
+dat <- readRDS("~/Dropbox (Partners HealthCare)/EHE_ECE_data/Counties_compiled_admin_geo_ehe_ece_sf_2008_2022.rds")[[1]] 
+
+```
+
+```{r}
+dat_table = dat %>%  st_drop_geometry()
+## Adding years with no event to the dataset 
+lookup_table <- dat_table %>%
+  select(GEOID, NAME, STUSPS, STATE_NAME, COUNTY_NAME) %>%
+  distinct() %>%
+  filter(!is.na(NAME) & !is.na(STUSPS) & !is.na(STATE_NAME) & 
+           !is.na(COUNTY_NAME))
+
+fill_na_with_lookup <- function(dat_table, lookup_table, column) {
+  na_rows <- is.na(dat_table[[column]])
+  lookup_values <- lookup_table[match(dat_table$GEOID[na_rows], lookup_table$GEOID), column]
+  dat_table[[column]][na_rows] <- lookup_values
+  return(dat_table)
+}
+year_range <- data.frame(year_numerical = 2008:2022)
+unique_geoids <- unique(dat$GEOID)
+year_geoid_combinations <- expand.grid(year_numerical = year_range$year_numerical, GEOID = unique_geoids)
+
+## Overall
+dat_table$abs_intensity = abs(ifelse(dat_table$event_type == "Extreme Cold Event", 
+                                     dat_table$min_intensity, dat_table$max_intensity))
+
+county_yearly_intensity <- dat_table %>%
+  group_by(GEOID,NAME, STATE_NAME, year_numerical) %>%
+  summarize(mean_intensity = mean(abs_intensity))
+dat_intensity_all <- merge(year_geoid_combinations, county_yearly_intensity, by = c("year_numerical", "GEOID"), all = TRUE)
+dat_intensity_all["mean_intensity"] <- lapply(dat_intensity_all["mean_intensity"], function(x) ifelse(is.na(x), 0, x))
+dat_intensity_all <- fill_na_with_lookup(dat_intensity_all, 
+                                               lookup_table, "NAME")
+dat_intensity_all <- fill_na_with_lookup(dat_intensity_all, 
+                                               lookup_table, "STATE_NAME")
+
+# Standardized linear regression
+lm_intensity_all <- dat_intensity_all %>%
+  group_by(GEOID, NAME, STATE_NAME) %>%
+  do(model = lm(scale(mean_intensity) ~ scale(year_numerical), data = .))
+
+slopes_all <- lm_intensity_all %>%
+  rowwise() %>%
+  mutate(slope = coef(model)[["scale(year_numerical)"]])
+
+# Merge with geometry data
+county_boundaris_catalog_all <- merge(counties_geo,
+          slopes_all %>% st_drop_geometry(),
+          by.x="GEOID",
+          by.y="GEOID",
+          all.x = TRUE,
+          all.y = TRUE,
+          suffix = c("","_sp")) %>% st_as_sf() 
+
+```
+
+```{r}
+# Intensity all map
+ggplot() +
+  geom_sf(data = county_boundaris_catalog_all,
+            aes(fill = slope),
+            lwd = .1) + 
+  scale_fill_distiller(palette = "RdBu", limit = c(-0.9, 0.9),
+                       breaks = c(-0.8, -0.4, 0, 0.4, 0.8)) +
+  geom_sf(data = states_geo, fill = NA, color = "black", size = 0.5) +
+  labs(fill = "Intensity") +
+  theme_void() + 
+  theme(legend.position = "bottom")
+```
+
+```{r}
+## Heat
+county_heat_intensity <- dat_table %>%
+  filter(event_type == "Extreme Heat Event") %>%
+  group_by(GEOID,NAME, STATE_NAME, year_numerical) %>%
+  summarize(mean_intensity = mean(abs_intensity))
+
+dat_intensity_ehe <- merge(year_geoid_combinations, county_heat_intensity, by = c("year_numerical", "GEOID"), all = TRUE)
+dat_intensity_ehe["mean_intensity"] <- lapply(dat_intensity_ehe["mean_intensity"], function(x) ifelse(is.na(x), 0, x))
+
+dat_intensity_ehe <- fill_na_with_lookup(dat_intensity_ehe, lookup_table, "NAME")
+dat_intensity_ehe <- fill_na_with_lookup(dat_intensity_ehe, lookup_table, "STATE_NAME")
+
+## Standardized linear regression
+lm_intensity_ehe <- dat_intensity_ehe %>%
+  group_by(GEOID, NAME, STATE_NAME) %>%
+  do(model = lm(scale(mean_intensity) ~ scale(year_numerical), data = .))
+
+slopes_ehe <- lm_intensity_ehe %>%
+  rowwise() %>%
+  mutate(slope = coef(model)[["scale(year_numerical)"]])
+
+# Merge with geometry data
+county_boundaris_ehe_catalog <- merge(counties_geo,
+          slopes_ehe %>% st_drop_geometry(),
+          by.x="GEOID",
+          by.y="GEOID",
+          all.x = TRUE,
+          all.y = TRUE,
+          suffix = c("","_sp")) %>% st_as_sf() 
+
+
+```
+
+```{r}
+# Intensity EHE map
+ggplot() +
+  geom_sf(data = county_boundaris_ehe_catalog,
+            aes(fill = slope),
+            lwd = .1) + 
+  scale_fill_distiller(palette = "RdBu", limit = c(-0.9, 0.9),
+                       breaks = c(-0.8, -0.4, 0, 0.4, 0.8)) +
+  geom_sf(data = states_geo, fill = NA, color = "black", size = 0.5) +
+  labs(fill = "Intensity EHE") +
+  theme_void() + 
+  theme(legend.position = "bottom")
+```
+
+```{r}
+# Cold
+county_cold_intensity <- dat_table %>%
+  filter(event_type == "Extreme Cold Event") %>%
+  group_by(GEOID,NAME, STATE_NAME, year_numerical) %>%
+  summarize(mean_intensity = mean(abs_intensity))
+
+dat_intensity_ece <- merge(year_geoid_combinations, county_cold_intensity, by = c("year_numerical", "GEOID"), all = TRUE)
+dat_intensity_ece["mean_intensity"] <- lapply(dat_intensity_ece["mean_intensity"], function(x) ifelse(is.na(x), 0, x))
+
+dat_intensity_ece <- fill_na_with_lookup(dat_intensity_ece, lookup_table, "NAME")
+dat_intensity_ece <- fill_na_with_lookup(dat_intensity_ece, lookup_table, "STATE_NAME")
+
+lm_intensity_ece <- dat_intensity_ece %>%
+  group_by(GEOID, NAME, STATE_NAME) %>%
+  do(model = lm(scale(mean_intensity) ~ scale(year_numerical), data = .))
+
+slopes_ece <- lm_intensity_ece %>%
+  rowwise() %>%
+  mutate(slope = coef(model)[["scale(year_numerical)"]])
+
+# Merge with geometry data
+county_boundaris_ece_catalog <- merge(counties_geo,
+          slopes_ece %>% st_drop_geometry(),
+          by.x="GEOID",
+          by.y="GEOID",
+          all.x = TRUE,
+          all.y = TRUE,
+          suffix = c("","_sp")) %>% st_as_sf() 
+```
+
+```{r}
+# Intensity ECE map
+ggplot() +
+  geom_sf(data = county_boundaris_ece_catalog,
+            aes(fill = slope),
+            lwd = .1) + 
+  scale_fill_distiller(palette = "RdBu", limit = c(-0.9, 0.9),
+                       breaks = c(-0.8, -0.4, 0, 0.4, 0.8)) +
+  geom_sf(data = states_geo, fill = NA, color = "black", size = 0.5) +
+  labs(fill = "Intensity ECE") +
+  theme_void() + 
+  theme(legend.position = "bottom")
+```
