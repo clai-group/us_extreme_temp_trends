@@ -35,7 +35,7 @@ plot(counties_geo[1])
 dat_path <- file.path(here::here("trend_analysis_data/data",
                                "Counties_compiled_admin_geo_ehe_ece_sf_2008_2022.rds"))
 file_size <- file.info(dat_path)$size
-dat <- readRDS("data/EHE_ECE_data/Counties_compiled_admin_geo_ehe_ece_sf_2008_2022.rds")[[1]] 
+dat <- readRDS("~/Dropbox (Partners HealthCare)/EHE_ECE_data/Counties_compiled_admin_geo_ehe_ece_sf_2008_2022.rds")[[1]] 
 
 ```
 
@@ -81,7 +81,8 @@ slopes_all <- poisson_all %>%
   mutate(slope = coef(model)[["year_numerical"]])
 slopes_all <- slopes_all %>%
   ungroup() %>%
-  select(GEOID, NAME, STATE_NAME, slope)
+  select(GEOID, NAME, STATE_NAME, slope) %>%
+  mutate(percentage_change = (exp(slope) - 1) * 100)
 
 ```
 
@@ -99,10 +100,10 @@ county_boundaris_catalog_all <- merge(counties_geo,
 # Frequency all map
 ggplot() +
   geom_sf(data = county_boundaris_catalog_all,
-            aes(fill = slope),
+            aes(fill = percentage_change),
             lwd = .1) + 
-  scale_fill_distiller(palette = "RdBu", limit = c(-0.4, 0.4),
-                       breaks = c( -0.2, 0, 0.2)) +
+  scale_fill_distiller(palette = "RdBu", limit = c(-40, 40),
+                       breaks = c( -40, -20, 0, 20, 40)) +
   geom_sf(data = states_geo, fill = NA, color = "black", size = 0.5) +
   labs(fill = "Frequency") +
   theme_void() + 
@@ -132,7 +133,8 @@ slopes_ehe_poi <- poisson_ehe %>%
   mutate(slope = coef(model)[["year_numerical"]])
 slopes_ehe_poi <- slopes_ehe_poi %>%
   ungroup() %>%
-  select(GEOID, NAME, STATE_NAME, slope)
+  select(GEOID, NAME, STATE_NAME, slope)%>%
+  mutate(percentage_change = (exp(slope) - 1) * 100)
 
 ```
 
@@ -150,10 +152,10 @@ county_boundaris_ehe_catalog <- merge(counties_geo,
 # Frequency EHE map
 ggplot() +
   geom_sf(data = county_boundaris_ehe_catalog,
-            aes(fill = slope),
+            aes(fill = percentage_change),
             lwd = .1) + 
-  scale_fill_distiller(palette = "RdBu", limit = c(-0.4, 0.4),
-                       breaks = c( -0.2, 0, 0.2)) +
+  scale_fill_distiller(palette = "RdBu", limit = c(-40, 40),
+                       breaks = c( -40, -20, 0, 20, 40)) +
   geom_sf(data = states_geo, fill = NA, color = "black", size = 0.5) +
   labs(fill = "Frequency EHE") +
   theme_void() + 
@@ -183,7 +185,8 @@ slopes_ece_poi <- poisson_ece %>%
   mutate(slope = coef(model)[["year_numerical"]])
 slopes_ece_poi <- slopes_ece_poi %>%
   ungroup() %>%
-  select(GEOID, NAME, STATE_NAME, slope)
+  select(GEOID, NAME, STATE_NAME, slope) %>%
+  mutate(percentage_change = (exp(slope) - 1) * 100)
 
 ```
 
@@ -201,10 +204,10 @@ county_boundaris_ece_catalog <- merge(counties_geo,
 # Frequency ECE map
 ggplot() +
   geom_sf(data = county_boundaris_ece_catalog,
-            aes(fill = slope),
+            aes(fill = percentage_change),
             lwd = .1) + 
-  scale_fill_distiller(palette = "RdBu", limit = c(-0.4, 0.4),
-                       breaks = c( -0.2, 0, 0.2)) +
+  scale_fill_distiller(palette = "RdBu", limit = c(-40, 40),
+                       breaks = c( -40, -20, 0, 20, 40)) +
   geom_sf(data = states_geo, fill = NA, color = "black", size = 0.5) +
   labs(fill = "Frequency ECE") +
   theme_void() + 
